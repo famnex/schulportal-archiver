@@ -1,0 +1,6 @@
+node_modules/
+database.db
+.env
+temp_*
+schulportal_export_*
+bulk_export_test.zip

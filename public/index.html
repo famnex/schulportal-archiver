@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Schulportal Hessen Login Integration</title>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="background-radial"></div>
+  <div class="background-grid"></div>
+
+  <main class="app-container">
+    <div class="login-card" id="login-card">
+      <div class="card-header">
+        <div class="logo-container">
+          <svg class="logo-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h1>SPH Archiver</h1>
+        <p class="subtitle">Melden Sie sich mit Ihren Schulportal-Zugangsdaten an</p>
+      </div>
+
+      <form id="login-form" novalidate>
+        <!-- Schulnummer -->
+        <div class="input-group">
+          <input type="text" id="school-number" name="schoolNumber" placeholder=" " required autocomplete="off" maxlength="6">
+          <label for="school-number">Schulnummer (z.B. 9743)</label>
+          <span class="focus-border"></span>
+        </div>
+
+        <!-- Benutzername -->
+        <div class="input-group">
+          <input type="text" id="username" name="username" placeholder=" " required autocomplete="username">
+          <label for="username">Benutzername</label>
+          <span class="focus-border"></span>
+        </div>
+
+        <!-- Passwort -->
+        <div class="input-group">
+          <input type="password" id="password" name="password" placeholder=" " required autocomplete="current-password">
+          <label for="password">Passwort</label>
+          <span class="focus-border"></span>
+          <button type="button" class="toggle-password" id="toggle-password" aria-label="Passwort anzeigen">
+            <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Error/Status Box -->
+        <div class="status-message hidden" id="status-message">
+          <div class="status-icon" id="status-icon"></div>
+          <p class="status-text" id="status-text"></p>
+        </div>
+
+        <!-- Submit Button -->
+        <button type="submit" class="submit-btn" id="submit-btn">
+          <span class="btn-text">Verbindung herstellen</span>
+          <span class="btn-loader hidden">
+            <svg class="spinner" viewBox="0 0 50 50">
+              <circle class="path" cx="25" cy="25" r="20" fill="none" stroke-width="5"></circle>
+            </svg>
+          </span>
+        </button>
+      </form>
+    </div>
+
+    <!-- Success Screen (Hidden initially) -->
+    <div class="success-card hidden" id="success-card">
+      <div class="success-icon-container">
+        <svg class="check-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="22 4 12 14.01 9 11.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h2>Erfolgreich Verbunden</h2>
+      <p class="success-desc">Deine Zugangsdaten wurden verschlüsselt gespeichert. Der Archiver ist bereit für weitere Befehle.</p>
+      
+      <div class="user-info-badge">
+        <div class="badge-label">Aktiver Account</div>
+        <div class="badge-value" id="connected-user">Max Mustermann (Schule: 9743)</div>
+      </div>
+
+      <!-- Courses List -->
+      <div class="courses-container hidden" id="courses-container">
+        <div class="courses-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h3 class="section-title" style="margin-bottom: 0;">Meine Kurse (Mein Unterricht)</h3>
+          
+          <div class="semester-selection" style="display: flex; align-items: center; gap: 8px;">
+            <label for="semester-select" style="font-size: 13px; color: var(--text-secondary);">Halbjahr:</label>
+            <select id="semester-select" class="semester-select">
+              <option value="1">1. Halbjahr</option>
+              <option value="2" selected>2. Halbjahr</option>
+            </select>
+          </div>
+
+          <button class="export-all-btn" id="export-all-btn">
+            <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; margin-right: 6px;">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Alle Exportieren
+          </button>
+        </div>
+        <div class="table-wrapper">
+          <table class="courses-table">
+            <thead>
+              <tr>
+                <th>Kurs-ID</th>
+                <th>Kursname</th>
+                <th style="text-align: right;">Aktion</th>
+              </tr>
+            </thead>
+            <tbody id="courses-tbody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <button class="action-btn secondary-btn" id="disconnect-btn">Abmelden</button>
+    </div>
+  </main>
+
+  <!-- Progress Modal Overlay -->
+  <div class="progress-overlay hidden" id="progress-overlay">
+    <div class="progress-card">
+      <h3>Sammel-Export läuft...</h3>
+      <p class="progress-status" id="progress-status">Vorbereiten...</p>
+      
+      <div class="progress-bar-container">
+        <div class="progress-bar-fill" id="progress-bar-fill" style="width: 0%;"></div>
+      </div>
+      
+      <div class="progress-info">
+        <span class="progress-percentage" id="progress-percentage">0%</span>
+        <span class="progress-fraction" id="progress-fraction">0 / 0</span>
+      </div>
+
+      <button class="action-btn secondary-btn" id="cancel-export-btn" style="margin-top: 16px; width: 100%;">Abbrechen</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

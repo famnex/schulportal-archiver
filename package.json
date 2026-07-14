@@ -1,0 +1,17 @@
+{
+  "name": "schulportal-archiver",
+  "version": "1.0.0",
+  "description": "Schulportal Hessen login integration and archiver backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.17",
+    "axios": "^1.7.2",
+    "better-sqlite3": "^11.0.0",
+    "crypto-js": "^4.2.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}
