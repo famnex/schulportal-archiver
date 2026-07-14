@@ -31,7 +31,9 @@ const app = express();
 let APP_URL = process.env.APP_URL || '/';
 APP_URL = APP_URL.replace(/\/+/g, '/');
 if (!APP_URL.startsWith('/')) APP_URL = '/' + APP_URL;
-if (!APP_URL.endsWith('/')) APP_URL = APP_URL + '/';
+if (APP_URL.length > 1 && APP_URL.endsWith('/')) {
+  APP_URL = APP_URL.slice(0, -1);
+}
 
 app.use(express.json());
 
@@ -730,17 +732,10 @@ router.get('/api/download-zip', (req, res) => {
   });
 });
 
-// Mount the router on APP_URL
-app.use(APP_URL, router);
-
+// Mount the router on root and APP_URL subpath
+app.use('/', router);
 if (APP_URL !== '/') {
-  const urlWithoutTrailing = APP_URL.slice(0, -1);
-  app.get(urlWithoutTrailing, (req, res) => {
-    res.redirect(APP_URL);
-  });
-  app.get('/', (req, res) => {
-    res.redirect(APP_URL);
-  });
+  app.use(APP_URL, router);
 }
 
 // Start Server
