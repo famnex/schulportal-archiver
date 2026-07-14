@@ -29,6 +29,7 @@ const PORT = process.env.PORT || 3012;
 const app = express();
 
 let APP_URL = process.env.APP_URL || '/';
+APP_URL = APP_URL.replace(/\/+/g, '/');
 if (!APP_URL.startsWith('/')) APP_URL = '/' + APP_URL;
 if (!APP_URL.endsWith('/')) APP_URL = APP_URL + '/';
 
