@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentUser = null;
   let activeEventSource = null;
 
-  // 1. Remember credentials on load
+  // 1. Remember credentials on load & auto-select current semester
   const savedSchoolNumber = localStorage.getItem('sph_saved_school_number');
   const savedUsername = localStorage.getItem('sph_saved_username');
   if (savedSchoolNumber) {
@@ -40,6 +40,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if (savedSchoolNumber && savedUsername) {
     passwordInput.focus();
+  }
+
+  const semesterSelect = document.getElementById('semester-select');
+  if (semesterSelect) {
+    const curMonth = new Date().getMonth() + 1;
+    // In Germany, Aug-Jan = 1. Halbjahr, Feb-Jul = 2. Halbjahr
+    const defaultSemester = (curMonth >= 8 || curMonth === 1) ? '1' : '2';
+    semesterSelect.value = defaultSemester;
   }
 
   // 2. Export All or Teacher Bulk Export handler
@@ -276,10 +284,18 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       // Sort teachers alphabetically by Nachname
+      const getLastName = (teacherName) => {
+        if (!teacherName) return '';
+        const first = teacherName.split('/')[0].trim();
+        if (first.includes(',')) {
+          return first.split(',')[0].trim();
+        }
+        const parts = first.split(' ').filter(Boolean);
+        return parts[parts.length - 1] || first;
+      };
+
       const sortedTeachers = Array.from(teacherMap.keys()).sort((a, b) => {
-        const lastA = a.includes(',') ? a.split(',')[0].trim() : a.trim();
-        const lastB = b.includes(',') ? b.split(',')[0].trim() : b.trim();
-        return lastA.localeCompare(lastB, 'de', { sensitivity: 'base' });
+        return getLastName(a).localeCompare(getLastName(b), 'de', { sensitivity: 'base' });
       });
 
       sortedTeachers.forEach((teacherName) => {

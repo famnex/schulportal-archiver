@@ -129,7 +129,11 @@ function normalizeTeacherName(raw) {
   if (['Eigene Mappen', 'Ohne Zuordnung', 'Unbekannt', 'Keine Lehrkraft'].includes(clean)) {
     return clean;
   }
-  if (!clean.includes(',') && clean.includes(' ')) {
+  // If name already contains a comma (e.g. "Grasser, Andreas (GRAS)" or "Peter, Celina (pece)"), keep as is
+  if (clean.includes(',')) {
+    return clean;
+  }
+  if (clean.includes(' ')) {
     const parts = clean.split(' ');
     const lastName = parts.pop();
     const firstName = parts.join(' ');
@@ -139,11 +143,42 @@ function normalizeTeacherName(raw) {
 }
 
 /**
- * Extracts course IDs, names, and teachers from meinunterricht.php HTML
+ * Extracts course IDs, names, and teachers from meinunterricht.php HTML.
+ * Supports both "Nur lesbare Kursmappen" table rows and box card tiles.
  */
 function extractCourses(html, defaultTeacher = 'Eigene Mappen') {
   const courses = [];
   const processedIds = new Set();
+  if (!html) return courses;
+
+  // 1. Table row pattern from "Nur lesbare Kursmappen":
+  // <tr> <td> Teacher(s) </td> <td> <a href="meinunterricht.php?a=view&id=..."> Name </a> </td> </tr>
+  const rowRegex = /<tr[^>]*>[\s\S]*?<td[^>]*>([\s\S]*?)<\/td>[\s\S]*?<td[^>]*>[\s\S]*?<a[^>]*href=["']meinunterricht\.php\?a=view(?:&amp;|&)id=(\d+)["'][^>]*>([\s\S]*?)<\/a>[\s\S]*?<\/tr>/gi;
+  let rowMatch;
+  while ((rowMatch = rowRegex.exec(html)) !== null) {
+    const rawTeacher = rowMatch[1];
+    const id = rowMatch[2];
+    const name = rowMatch[3].replace(/<[^>]*>/g, '').trim();
+
+    if (processedIds.has(id)) continue;
+    processedIds.add(id);
+
+    const teacherParts = rawTeacher
+      .split(/<br\s*\/?>|\n/i)
+      .map(t => normalizeTeacherName(t))
+      .filter(t => t.length > 0 && !t.match(/^(?:Lehrer|Lehrkraft|Name)$/i));
+
+    let teacher = teacherParts.join(' / ');
+    if (!teacher) teacher = defaultTeacher;
+
+    courses.push({
+      id,
+      name,
+      teacher
+    });
+  }
+
+  // 2. Box card pattern (for personal/created course cards or fallback)
   const regex = /href="meinunterricht\.php\?a=view(?:&amp;|&)id=(\d+)"[^>]*>([\s\S]*?)<\/a>/gi;
   let match;
 
@@ -315,6 +350,10 @@ function getBrowserArgs(outputPath, inputPath) {
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',
     '--disable-gpu',
+    '--disable-web-security',
+    '--allow-file-access-from-files',
+    '--run-all-compositor-stages-before-draw',
+    '--virtual-time-budget=2000',
     '--no-pdf-header-footer',
     `--print-to-pdf=${outputPath}`,
     inputPath
@@ -460,7 +499,8 @@ router.post('/api/login', async (req, res) => {
     let courses = [];
     try {
       console.log('Fetching MeinUnterricht courses...');
-      const coursesResponse = await axios.get('https://start.schulportal.hessen.de/meinunterricht.php?f=allBooks&jump=no', {
+      // Primary: fetch meinunterricht.php (which contains the "Nur lesbare Kursmappen" table)
+      const coursesResponse = await axios.get('https://start.schulportal.hessen.de/meinunterricht.php', {
         headers: {
           'Cookie': getCookieHeader(),
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
@@ -476,8 +516,38 @@ router.post('/api/login', async (req, res) => {
 
       if (coursesResponse.data) {
         courses = extractCourses(coursesResponse.data, user2 || username || 'Eigene Mappen');
-        console.log(`Extracted ${courses.length} courses successfully.`);
       }
+
+      // Secondary: if no courses found, also check f=allBooks&jump=no
+      if (!courses || courses.length === 0) {
+        console.log('No courses on main page, trying ?f=allBooks&jump=no...');
+        const allBooksResponse = await axios.get('https://start.schulportal.hessen.de/meinunterricht.php?f=allBooks&jump=no', {
+          headers: {
+            'Cookie': getCookieHeader(),
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          },
+          maxRedirects: 5,
+          validateStatus: (status) => status >= 200 && status < 400
+        });
+
+        if (allBooksResponse.headers['set-cookie']) {
+          const newCookies = allBooksResponse.headers['set-cookie'].map(c => c.split(';')[0]);
+          accumulatedCookies = [...new Set([...accumulatedCookies, ...newCookies])];
+        }
+
+        if (allBooksResponse.data) {
+          const addCourses = extractCourses(allBooksResponse.data, user2 || username || 'Eigene Mappen');
+          const existingIds = new Set(courses.map(c => c.id));
+          for (const c of addCourses) {
+            if (!existingIds.has(c.id)) {
+              courses.push(c);
+              existingIds.add(c.id);
+            }
+          }
+        }
+      }
+
+      console.log(`Extracted ${courses.length} courses successfully.`);
     } catch (coursesErr) {
       console.error('Error fetching MeinUnterricht page:', coursesErr.message);
     }
@@ -599,7 +669,7 @@ router.get('/api/download', async (req, res) => {
     const injection = `
       <base href="https://start.schulportal.hessen.de/">
       <style>
-        .hidden, .hidden_encoded, encoded {
+        .hidden, .hidden_encoded, encoded, .hidden-print {
           display: none !important;
         }
       </style>
@@ -694,15 +764,38 @@ router.get('/api/export-all', async (req, res) => {
 
   try {
     console.log('Fetching courses for bulk export...');
-    const coursesResponse = await axios.get('https://start.schulportal.hessen.de/meinunterricht.php?f=allBooks&jump=no', {
+    let courses = [];
+    const coursesResponse = await axios.get('https://start.schulportal.hessen.de/meinunterricht.php', {
       headers: {
         'Cookie': getCookieHeader(),
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     });
     updateCookies(coursesResponse);
+    if (coursesResponse.data) {
+      courses = extractCourses(coursesResponse.data, user || 'Eigene Mappen');
+    }
 
-    let courses = extractCourses(coursesResponse.data, user || 'Eigene Mappen');
+    if (!courses || courses.length === 0) {
+      const allBooksResponse = await axios.get('https://start.schulportal.hessen.de/meinunterricht.php?f=allBooks&jump=no', {
+        headers: {
+          'Cookie': getCookieHeader(),
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+      updateCookies(allBooksResponse);
+      if (allBooksResponse.data) {
+        const addCourses = extractCourses(allBooksResponse.data, user || 'Eigene Mappen');
+        const existingIds = new Set(courses.map(c => c.id));
+        for (const c of addCourses) {
+          if (!existingIds.has(c.id)) {
+            courses.push(c);
+            existingIds.add(c.id);
+          }
+        }
+      }
+    }
+
     if (courseIds) {
       const idList = courseIds.split(',').map(s => s.trim()).filter(Boolean);
       if (idList.length > 0) {
@@ -784,7 +877,7 @@ router.get('/api/export-all', async (req, res) => {
       const injection = `
         <base href="https://start.schulportal.hessen.de/">
         <style>
-          .hidden, .hidden_encoded, encoded {
+          .hidden, .hidden_encoded, encoded, .hidden-print {
             display: none !important;
           }
         </style>
