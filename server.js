@@ -6,6 +6,7 @@ const CryptoJS = require('crypto-js');
 const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
+const { execFile, execSync } = require('child_process');
 
 // Ensure .env exists and has ENCRYPTION_KEY
 const envPath = path.join(__dirname, '.env');
@@ -153,6 +154,101 @@ function decryptHtmlEncodedTags(html, aesKey) {
       return '';
     }
   });
+}
+
+/**
+ * Detects Chrome, Chromium or Edge on Windows, Linux, and macOS.
+ * Also checks environment variables (CHROME_PATH, CHROME_BIN, BROWSER_PATH, PUPPETEER_EXECUTABLE_PATH).
+ */
+function getBrowserPath() {
+  // 1. Explicit environment variables
+  const envCandidates = [
+    process.env.CHROME_BIN,
+    process.env.CHROME_PATH,
+    process.env.BROWSER_PATH,
+    process.env.PUPPETEER_EXECUTABLE_PATH
+  ];
+  for (const candidate of envCandidates) {
+    if (candidate && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  // 2. Platform specific common locations
+  const platform = process.platform;
+  let candidates = [];
+
+  if (platform === 'win32') {
+    candidates = [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+      path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'Microsoft\\Edge\\Application\\msedge.exe'),
+      path.join(process.env.PROGRAMFILES || '', 'Google\\Chrome\\Application\\chrome.exe'),
+      path.join(process.env['PROGRAMFILES(X86)'] || '', 'Google\\Chrome\\Application\\chrome.exe')
+    ];
+  } else if (platform === 'darwin') {
+    candidates = [
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'
+    ];
+  } else {
+    // Linux / BSD / Server
+    candidates = [
+      '/usr/bin/chromium',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      '/snap/bin/chromium',
+      '/usr/bin/microsoft-edge',
+      '/usr/bin/microsoft-edge-stable',
+      '/usr/local/bin/chromium',
+      '/usr/local/bin/chrome',
+      '/usr/bin/chrome'
+    ];
+  }
+
+  for (const candidate of candidates) {
+    if (candidate && fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  // 3. System command lookup fallback (which / where)
+  try {
+    if (platform === 'win32') {
+      const output = execSync('where chrome.exe msedge.exe', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+      const first = output.split(/\r?\n/).map(l => l.trim()).find(l => l && fs.existsSync(l));
+      if (first) return first;
+    } else {
+      const output = execSync('which chromium chromium-browser google-chrome google-chrome-stable microsoft-edge microsoft-edge-stable 2>/dev/null', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
+      const first = output.split(/\r?\n/).map(l => l.trim()).find(l => l && fs.existsSync(l));
+      if (first) return first;
+    }
+  } catch (e) {
+    // lookup error ignored
+  }
+
+  return null;
+}
+
+/**
+ * Returns arguments for headless PDF printing compatible with both Windows and Linux servers.
+ */
+function getBrowserArgs(outputPath, inputPath) {
+  return [
+    '--headless',
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--no-pdf-header-footer',
+    `--print-to-pdf=${outputPath}`,
+    inputPath
+  ];
 }
 
 // In-memory cookie jar mock or session store for simplicity
@@ -440,22 +536,9 @@ router.get('/api/download', async (req, res) => {
     `;
     html = html.replace('<head>', `<head>${injection}`);
 
-    // Detect browser executable on Windows
-    const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-    const chromePath86 = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe';
-    const edgePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
-
-    let browserPath = '';
-    if (fs.existsSync(chromePath)) {
-      browserPath = chromePath;
-    } else if (fs.existsSync(chromePath86)) {
-      browserPath = chromePath86;
-    } else if (fs.existsSync(edgePath)) {
-      browserPath = edgePath;
-    }
-
+    const browserPath = getBrowserPath();
     if (!browserPath) {
-      throw new Error('Kein geeigneter Browser (Chrome oder Edge) zum PDF-Drucken gefunden.');
+      throw new Error('Kein geeigneter Browser (Chromium oder Chrome) zum PDF-Drucken gefunden. Bitte installieren Sie Chromium auf dem Server (z. B. "sudo apt install -y chromium" oder "sudo apt install -y chromium-browser") oder setzen Sie die Umgebungsvariable CHROME_PATH.');
     }
 
     // Create temp files
@@ -465,15 +548,8 @@ router.get('/api/download', async (req, res) => {
 
     fs.writeFileSync(tempHtmlPath, html, 'utf8');
 
-    const args = [
-      '--headless',
-      '--disable-gpu',
-      '--no-pdf-header-footer',
-      `--print-to-pdf=${tempPdfPath}`,
-      tempHtmlPath
-    ];
+    const args = getBrowserArgs(tempPdfPath, tempHtmlPath);
 
-    const { execFile } = require('child_process');
     execFile(browserPath, args, (err) => {
       // Clean up HTML file immediately
       try { fs.unlinkSync(tempHtmlPath); } catch (e) {}
@@ -568,20 +644,10 @@ router.get('/api/export-all', async (req, res) => {
     tempDir = path.join(__dirname, `temp_export_${exportId}`);
     fs.mkdirSync(tempDir, { recursive: true });
 
-    const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-    const chromePath86 = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe';
-    const edgePath = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
-
-    let browserPath = '';
-    if (fs.existsSync(chromePath)) browserPath = chromePath;
-    else if (fs.existsSync(chromePath86)) browserPath = chromePath86;
-    else if (fs.existsSync(edgePath)) browserPath = edgePath;
-
+    const browserPath = getBrowserPath();
     if (!browserPath) {
-      throw new Error('Kein geeigneter Browser zum PDF-Drucken gefunden.');
+      throw new Error('Kein geeigneter Browser (Chromium oder Chrome) zum PDF-Drucken gefunden. Bitte installieren Sie Chromium auf dem Server (z. B. "sudo apt install -y chromium" oder "sudo apt install -y chromium-browser") oder setzen Sie die Umgebungsvariable CHROME_PATH.');
     }
-
-    const { execFile } = require('child_process');
 
     for (let i = 0; i < courses.length; i++) {
       const course = courses[i];
@@ -653,13 +719,7 @@ router.get('/api/export-all', async (req, res) => {
       const tempPdfPath = path.join(tempDir, `kurs_${course.id}.pdf`);
       fs.writeFileSync(tempHtmlPath, html, 'utf8');
 
-      const args = [
-        '--headless',
-        '--disable-gpu',
-        '--no-pdf-header-footer',
-        `--print-to-pdf=${tempPdfPath}`,
-        tempHtmlPath
-      ];
+      const args = getBrowserArgs(tempPdfPath, tempHtmlPath);
 
       await new Promise((resolve, reject) => {
         execFile(browserPath, args, (err) => {
