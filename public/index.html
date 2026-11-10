@@ -93,39 +93,35 @@
 
       <!-- Courses List -->
       <div class="courses-container hidden" id="courses-container">
-        <div class="courses-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-          <h3 class="section-title" style="margin-bottom: 0;">Meine Kurse (Mein Unterricht)</h3>
-          
-          <div class="semester-selection" style="display: flex; align-items: center; gap: 8px;">
-            <label for="semester-select" style="font-size: 13px; color: var(--text-secondary);">Halbjahr:</label>
-            <select id="semester-select" class="semester-select">
-              <option value="1">1. Halbjahr</option>
-              <option value="2" selected>2. Halbjahr</option>
-            </select>
+        <div class="courses-header">
+          <div class="courses-header-left">
+            <h3 class="section-title">Meine Kurse</h3>
+            <span class="total-courses-badge" id="total-courses-badge">Gesamt: 0 Mappen</span>
           </div>
+          
+          <div class="courses-header-right">
+            <div class="semester-selection">
+              <label for="semester-select">Halbjahr:</label>
+              <select id="semester-select" class="semester-select">
+                <option value="1">1. Halbjahr</option>
+                <option value="2" selected>2. Halbjahr</option>
+              </select>
+            </div>
 
-          <button class="export-all-btn" id="export-all-btn">
-            <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; margin-right: 6px;">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-            Alle Exportieren
-          </button>
+            <button class="export-all-btn" id="export-all-btn">
+              <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Alle Exportieren
+            </button>
+          </div>
         </div>
-        <div class="table-wrapper">
-          <table class="courses-table">
-            <thead>
-              <tr>
-                <th>Kurs-ID</th>
-                <th>Kursname</th>
-                <th style="text-align: right;">Aktion</th>
-              </tr>
-            </thead>
-            <tbody id="courses-tbody">
-              <!-- Dynamically populated -->
-            </tbody>
-          </table>
+
+        <!-- Teachers Accordion -->
+        <div class="teachers-accordion" id="teachers-accordion">
+          <!-- Dynamically populated by app.js -->
         </div>
       </div>
 
@@ -136,7 +132,7 @@
   <!-- Progress Modal Overlay -->
   <div class="progress-overlay hidden" id="progress-overlay">
     <div class="progress-card">
-      <h3>Sammel-Export läuft...</h3>
+      <h3 id="progress-modal-title">Sammel-Export läuft...</h3>
       <p class="progress-status" id="progress-status">Vorbereiten...</p>
       
       <div class="progress-bar-container">

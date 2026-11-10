@@ -2,12 +2,23 @@
 
 This web application integrates with the Schulportal Hessen (SPH) to perform a login with a user's credentials (username, password, and school number) and securely store them. This application lays the groundwork for further automated processes (such as archiving).
 
-## Architecture
+## Architecture & Features
 
 The project consists of:
-1. **Frontend (SPA)**: A premium web interface built using HTML, modern CSS, and JavaScript.
-2. **Backend (Express)**: Serves the web interface, exposes API endpoints, manages session data, communicates with SPH, and encrypts/stores credentials.
-3. **Database (SQLite)**: Stores credentials securely.
+1. **Frontend (SPA)**:
+   - Modern dark mode user interface built with vanilla HTML5, CSS3, and JavaScript.
+   - **Login Memory**: Remembers the last used `Schulnummer` and `Username` in `localStorage` for quick re-login.
+   - **Teacher Accordion**: Courses/books (`Mappen`) are grouped by teacher, sorted alphabetically by last name (`Nachname`), with count badges per teacher and a global count badge (`Gesamt: X Mappen`).
+   - **Collapsible Cards**: Each teacher group can be expanded/collapsed.
+   - **Export Options**: Individual PDF export per course book, bulk ZIP export per teacher, or complete bulk ZIP export of all courses.
+   - **Live Progress**: Throttled parallel export with Server-Sent Events (SSE) and animated progress bar.
+2. **Backend (Express)**:
+   - Serves the web interface and API endpoints with dynamic subpath support (`APP_URL`).
+   - Configurable dynamic port (`PORT`, default: `3012`).
+   - Cross-platform headless Chromium/Chrome/Edge integration (`--no-sandbox`, `--no-pdf-header-footer`) for clean PDF generation.
+   - Session management and SPH communication.
+3. **Database (SQLite)**:
+   - Stores encrypted credentials via `better-sqlite3`.
 
 ## Security Features
 

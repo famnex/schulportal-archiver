@@ -15,9 +15,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const connectedUserSpan = document.getElementById('connected-user');
   const disconnectBtn = document.getElementById('disconnect-btn');
   const coursesContainer = document.getElementById('courses-container');
-  const coursesTbody = document.getElementById('courses-tbody');
+  const teachersAccordion = document.getElementById('teachers-accordion');
+  const totalCoursesBadge = document.getElementById('total-courses-badge');
   const exportAllBtn = document.getElementById('export-all-btn');
   const progressOverlay = document.getElementById('progress-overlay');
+  const progressModalTitle = document.getElementById('progress-modal-title');
   const progressStatus = document.getElementById('progress-status');
   const progressBarFill = document.getElementById('progress-bar-fill');
   const progressPercentage = document.getElementById('progress-percentage');
@@ -27,8 +29,21 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentUser = null;
   let activeEventSource = null;
 
-  // Export All click handler
-  exportAllBtn.addEventListener('click', () => {
+  // 1. Remember credentials on load
+  const savedSchoolNumber = localStorage.getItem('sph_saved_school_number');
+  const savedUsername = localStorage.getItem('sph_saved_username');
+  if (savedSchoolNumber) {
+    schoolNumberInput.value = savedSchoolNumber;
+  }
+  if (savedUsername) {
+    usernameInput.value = savedUsername;
+  }
+  if (savedSchoolNumber && savedUsername) {
+    passwordInput.focus();
+  }
+
+  // 2. Export All or Teacher Bulk Export handler
+  function triggerBulkExport({ courseIds = null, teacher = null } = {}) {
     if (!currentUser) {
       alert('Kein aktiver Benutzer gefunden.');
       return;
@@ -37,6 +52,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const semester = document.getElementById('semester-select').value;
     
     // Reset and show progress modal
+    if (progressModalTitle) {
+      progressModalTitle.textContent = teacher ? `Sammel-Export (${teacher}) läuft...` : 'Sammel-Export läuft...';
+    }
     progressStatus.textContent = 'Vorbereiten...';
     progressStatus.style.color = '';
     progressBarFill.style.width = '0%';
@@ -44,9 +62,19 @@ document.addEventListener('DOMContentLoaded', () => {
     progressFraction.textContent = '0 / 0';
     progressOverlay.classList.remove('hidden');
 
-    const exportUrl = `api/export-all?halb=${semester}&user=${encodeURIComponent(currentUser.username)}&schoolNumber=${encodeURIComponent(currentUser.schoolNumber)}`;
-    
-    // Establish Server-Sent Events connection
+    let exportUrl = `api/export-all?halb=${semester}&user=${encodeURIComponent(currentUser.username)}&schoolNumber=${encodeURIComponent(currentUser.schoolNumber)}`;
+    if (courseIds && courseIds.length > 0) {
+      exportUrl += `&courseIds=${encodeURIComponent(courseIds.join(','))}`;
+    }
+    if (teacher) {
+      exportUrl += `&teacher=${encodeURIComponent(teacher)}`;
+    }
+
+    if (activeEventSource) {
+      activeEventSource.close();
+      activeEventSource = null;
+    }
+
     activeEventSource = new EventSource(exportUrl);
 
     activeEventSource.onmessage = (event) => {
@@ -72,7 +100,6 @@ document.addEventListener('DOMContentLoaded', () => {
           
           setTimeout(() => {
             progressOverlay.classList.add('hidden');
-            // Trigger automatic file download
             window.location.href = data.downloadUrl;
           }, 800);
         } else if (data.type === 'error') {
@@ -86,6 +113,10 @@ document.addEventListener('DOMContentLoaded', () => {
     activeEventSource.onerror = () => {
       handleExportError('Verbindung zum Server unterbrochen.');
     };
+  }
+
+  exportAllBtn.addEventListener('click', () => {
+    triggerBulkExport();
   });
 
   cancelExportBtn.addEventListener('click', () => {
@@ -115,7 +146,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const isPassword = passwordInput.getAttribute('type') === 'password';
     passwordInput.setAttribute('type', isPassword ? 'text' : 'password');
     
-    // Update SVG icon representation if necessary
     if (isPassword) {
       togglePasswordBtn.innerHTML = `
         <svg class="eye-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -138,7 +168,6 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     hideStatus();
 
-    // Client-side Validation
     const schoolNumber = schoolNumberInput.value.trim();
     const username = usernameInput.value.trim();
     const password = passwordInput.value;
@@ -148,10 +177,12 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Enter loading state
+    // Save remembered credentials in localStorage
+    localStorage.setItem('sph_saved_school_number', schoolNumber);
+    localStorage.setItem('sph_saved_username', username);
+
     setLoading(true);
 
-    // Calculate timezone offset (in hours)
     const timezone = -new Date().getTimezoneOffset() / 60;
 
     try {
@@ -174,7 +205,6 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error(data.error || 'Login fehlgeschlagen.');
       }
 
-      // Success
       showSuccessCard(data.user, data.courses);
     } catch (err) {
       showError(err.message);
@@ -185,20 +215,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Handle Disconnect
   disconnectBtn.addEventListener('click', () => {
-    // Reset form fields
     passwordInput.value = '';
+
+    // Keep remembered credentials prefilled
+    const sn = localStorage.getItem('sph_saved_school_number');
+    const un = localStorage.getItem('sph_saved_username');
+    if (sn) schoolNumberInput.value = sn;
+    if (un) usernameInput.value = un;
     
-    // Switch panels
     successCard.classList.add('hidden');
     loginCard.classList.remove('hidden');
     
     coursesContainer.classList.add('hidden');
-    coursesTbody.innerHTML = '';
+    if (teachersAccordion) teachersAccordion.innerHTML = '';
     
     hideStatus();
   });
 
-  // UI State Helper Functions
   function setLoading(isLoading) {
     if (isLoading) {
       submitBtn.disabled = true;
@@ -225,48 +258,165 @@ document.addEventListener('DOMContentLoaded', () => {
   function showSuccessCard(user, courses) {
     currentUser = user;
     connectedUserSpan.textContent = `${user.username} (Schule: ${user.schoolNumber})`;
-    
-    // Clear and build table rows
-    coursesTbody.innerHTML = '';
+
+    teachersAccordion.innerHTML = '';
+
     if (courses && courses.length > 0) {
+      const totalCount = courses.length;
+      totalCoursesBadge.textContent = `Gesamt: ${totalCount} ${totalCount === 1 ? 'Mappe' : 'Mappen'}`;
+
+      // Group courses by teacher
+      const teacherMap = new Map();
       courses.forEach(c => {
-        const tr = document.createElement('tr');
-        
-        const tdId = document.createElement('td');
-        tdId.textContent = c.id;
-        
-        const tdName = document.createElement('td');
-        tdName.textContent = c.name;
+        const teacher = c.teacher || 'Ohne Zuordnung';
+        if (!teacherMap.has(teacher)) {
+          teacherMap.set(teacher, []);
+        }
+        teacherMap.get(teacher).push(c);
+      });
 
-        const tdAction = document.createElement('td');
-        tdAction.style.textAlign = 'right';
+      // Sort teachers alphabetically by Nachname
+      const sortedTeachers = Array.from(teacherMap.keys()).sort((a, b) => {
+        const lastA = a.includes(',') ? a.split(',')[0].trim() : a.trim();
+        const lastB = b.includes(',') ? b.split(',')[0].trim() : b.trim();
+        return lastA.localeCompare(lastB, 'de', { sensitivity: 'base' });
+      });
 
-        const downloadBtn = document.createElement('button');
-        downloadBtn.className = 'action-icon-btn';
-        downloadBtn.title = 'Kurs archivieren';
-        downloadBtn.innerHTML = `
-          <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      sortedTeachers.forEach((teacherName) => {
+        const teacherCourses = teacherMap.get(teacherName);
+        teacherCourses.sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }));
+
+        const card = document.createElement('div');
+        card.className = 'teacher-group-card expanded';
+
+        // Header
+        const header = document.createElement('div');
+        header.className = 'teacher-group-header';
+
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'teacher-info';
+
+        const chevron = document.createElement('span');
+        chevron.className = 'chevron-icon';
+        chevron.innerHTML = `
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        `;
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'teacher-name';
+        nameSpan.textContent = teacherName;
+
+        const countBadge = document.createElement('span');
+        countBadge.className = 'teacher-count-badge';
+        countBadge.textContent = `(${teacherCourses.length})`;
+
+        infoDiv.appendChild(chevron);
+        infoDiv.appendChild(nameSpan);
+        infoDiv.appendChild(countBadge);
+
+        // Teacher Actions
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'teacher-actions';
+
+        const teacherDlBtn = document.createElement('button');
+        teacherDlBtn.className = 'teacher-download-btn';
+        teacherDlBtn.title = `Alle ${teacherCourses.length} Mappen von ${teacherName} exportieren`;
+        teacherDlBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
+          Mappen exportieren
         `;
-        downloadBtn.addEventListener('click', () => {
-          const semester = document.getElementById('semester-select').value;
-          const downloadUrl = `api/download?id=${c.id}&halb=${semester}&user=${encodeURIComponent(user.username)}&schoolNumber=${encodeURIComponent(user.schoolNumber)}`;
-          window.location.href = downloadUrl;
+        teacherDlBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          triggerBulkExport({
+            courseIds: teacherCourses.map(c => c.id),
+            teacher: teacherName
+          });
         });
 
-        tdAction.appendChild(downloadBtn);
-        
-        tr.appendChild(tdId);
-        tr.appendChild(tdName);
-        tr.appendChild(tdAction);
-        coursesTbody.appendChild(tr);
+        actionsDiv.appendChild(teacherDlBtn);
+        header.appendChild(infoDiv);
+        header.appendChild(actionsDiv);
+
+        // Click on header toggles accordion
+        header.addEventListener('click', () => {
+          card.classList.toggle('expanded');
+        });
+
+        // Panel
+        const panel = document.createElement('div');
+        panel.className = 'teacher-courses-panel';
+
+        const tableWrapper = document.createElement('div');
+        tableWrapper.className = 'table-wrapper';
+
+        const table = document.createElement('table');
+        table.className = 'courses-table';
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th style="width: 80px;">Kurs-ID</th>
+              <th>Kursname</th>
+              <th style="text-align: right; width: 80px;">Aktion</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        `;
+        const tbody = table.querySelector('tbody');
+
+        teacherCourses.forEach(c => {
+          const tr = document.createElement('tr');
+
+          const tdId = document.createElement('td');
+          tdId.textContent = c.id;
+
+          const tdName = document.createElement('td');
+          tdName.textContent = c.name;
+
+          const tdAction = document.createElement('td');
+          tdAction.style.textAlign = 'right';
+
+          const downloadBtn = document.createElement('button');
+          downloadBtn.className = 'action-icon-btn';
+          downloadBtn.title = 'Kurs archivieren';
+          downloadBtn.innerHTML = `
+            <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          `;
+          downloadBtn.addEventListener('click', () => {
+            const semester = document.getElementById('semester-select').value;
+            const downloadUrl = `api/download?id=${c.id}&halb=${semester}&user=${encodeURIComponent(user.username)}&schoolNumber=${encodeURIComponent(user.schoolNumber)}`;
+            window.location.href = downloadUrl;
+          });
+
+          tdAction.appendChild(downloadBtn);
+          tr.appendChild(tdId);
+          tr.appendChild(tdName);
+          tr.appendChild(tdAction);
+          tbody.appendChild(tr);
+        });
+
+        tableWrapper.appendChild(table);
+        panel.appendChild(tableWrapper);
+
+        card.appendChild(header);
+        card.appendChild(panel);
+        teachersAccordion.appendChild(card);
       });
+
       coursesContainer.classList.remove('hidden');
     } else {
-      coursesContainer.classList.add('hidden');
+      totalCoursesBadge.textContent = 'Gesamt: 0 Mappen';
+      teachersAccordion.innerHTML = '<p style="text-align:center; padding: 20px; color: var(--text-muted);">Keine Kurse gefunden.</p>';
+      coursesContainer.classList.remove('hidden');
     }
 
     loginCard.classList.add('hidden');

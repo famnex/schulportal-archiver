@@ -120,22 +120,92 @@ function processSphUsername(username, schoolNumber) {
 }
 
 /**
- * Extracts course IDs and names from meinunterricht.php HTML
+ * Normalizes a teacher name to "Nachname, Vorname" format
  */
-function extractCourses(html) {
+function normalizeTeacherName(raw) {
+  if (!raw) return 'Ohne Zuordnung';
+  let clean = raw.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  clean = clean.replace(/^(?:Herr|Frau|Dr\.|Prof\.)\s+/i, '');
+  if (['Eigene Mappen', 'Ohne Zuordnung', 'Unbekannt', 'Keine Lehrkraft'].includes(clean)) {
+    return clean;
+  }
+  if (!clean.includes(',') && clean.includes(' ')) {
+    const parts = clean.split(' ');
+    const lastName = parts.pop();
+    const firstName = parts.join(' ');
+    clean = `${lastName}, ${firstName}`;
+  }
+  return clean;
+}
+
+/**
+ * Extracts course IDs, names, and teachers from meinunterricht.php HTML
+ */
+function extractCourses(html, defaultTeacher = 'Eigene Mappen') {
   const courses = [];
-  // Matches href="meinunterricht.php?a=view&amp;id=157" or similar and gets name in the link
+  const processedIds = new Set();
   const regex = /href="meinunterricht\.php\?a=view(?:&amp;|&)id=(\d+)"[^>]*>([\s\S]*?)<\/a>/gi;
   let match;
+
   while ((match = regex.exec(html)) !== null) {
+    const id = match[1];
+    if (processedIds.has(id)) continue;
+    processedIds.add(id);
+
     const cleanName = match[2].replace(/<[^>]*>/g, '').trim();
+
+    const pos = match.index;
+    const contextBefore = html.substring(Math.max(0, pos - 1500), pos);
+    const contextAround = html.substring(Math.max(0, pos - 500), Math.min(html.length, pos + 1000));
+
+    let teacher = '';
+
+    // 1. Explicit teacher span or title inside the card/box
+    const teacherSpanMatch = contextAround.match(/title=["'](?:Lehrkraft|Lehrer|Besitzer|Ersteller|Lehrperson)["'][^>]*>[\s\S]*?<\/span>([^<\n\r]+)/i) ||
+                             contextAround.match(/<span[^>]*title=["'](?:Lehrkraft|Lehrer|Besitzer|Ersteller|Lehrperson)["'][^>]*>([\s\S]*?)<\/span>/i);
+    if (teacherSpanMatch) {
+      teacher = teacherSpanMatch[1];
+    }
+
+    // 2. User icon inside the box
+    if (!teacher) {
+      const userIconMatch = contextAround.match(/<i[^>]*class=["'][^"']*fa-user[^"']*["'][^>]*><\/i>\s*([^<\n\r]+)/i);
+      if (userIconMatch) {
+        teacher = userIconMatch[1];
+      }
+    }
+
+    // 3. Data attributes
+    if (!teacher) {
+      const dataMatch = contextAround.match(/data-(?:lehrer|teacher)=["']([^"']+)["']/i);
+      if (dataMatch) {
+        teacher = dataMatch[1];
+      }
+    }
+
+    // 4. Preceding section header (e.g. <h2>Nachname, Vorname</h2>)
+    if (!teacher) {
+      const headerMatches = [...contextBefore.matchAll(/<h[2-4][^>]*>([\s\S]*?)<\/h[2-4]>/gi)];
+      if (headerMatches.length > 0) {
+        const lastHeader = headerMatches[headerMatches.length - 1][1].replace(/<[^>]*>/g, '').trim();
+        if (lastHeader && !lastHeader.match(/Übersicht|Mappen|Menü|Apps|Start|Mein Unterricht|Navigation/i)) {
+          teacher = lastHeader;
+        }
+      }
+    }
+
+    if (!teacher) {
+      teacher = defaultTeacher;
+    }
+
     courses.push({
-      id: match[1],
-      name: cleanName
+      id: id,
+      name: cleanName,
+      teacher: normalizeTeacherName(teacher)
     });
   }
-  // De-duplicate courses by ID
-  return courses.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+
+  return courses;
 }
 
 /**
@@ -405,7 +475,7 @@ router.post('/api/login', async (req, res) => {
       }
 
       if (coursesResponse.data) {
-        courses = extractCourses(coursesResponse.data);
+        courses = extractCourses(coursesResponse.data, user2 || username || 'Eigene Mappen');
         console.log(`Extracted ${courses.length} courses successfully.`);
       }
     } catch (coursesErr) {
@@ -583,7 +653,7 @@ router.get('/api/download', async (req, res) => {
 });
 
 router.get('/api/export-all', async (req, res) => {
-  const { halb, user, schoolNumber } = req.query;
+  const { halb, user, schoolNumber, courseIds, teacher } = req.query;
 
   if (!halb || !user || !schoolNumber) {
     return res.status(400).send('Fehlende Parameter.');
@@ -632,7 +702,13 @@ router.get('/api/export-all', async (req, res) => {
     });
     updateCookies(coursesResponse);
 
-    const courses = extractCourses(coursesResponse.data);
+    let courses = extractCourses(coursesResponse.data, user || 'Eigene Mappen');
+    if (courseIds) {
+      const idList = courseIds.split(',').map(s => s.trim()).filter(Boolean);
+      if (idList.length > 0) {
+        courses = courses.filter(c => idList.includes(c.id));
+      }
+    }
     if (courses.length === 0) {
       sendSSE({ type: 'error', message: 'Keine Kurse gefunden.' });
       return res.end();
@@ -747,7 +823,8 @@ router.get('/api/export-all', async (req, res) => {
     zip.writeZip(zipPath);
     console.log('ZIP written successfully to:', zipPath);
 
-    const downloadFilename = `schulportal_export_halbjahr_${halb}_${exportId}.zip`;
+    const safePrefix = teacher ? `schulportal_${teacher.replace(/[^a-zA-Z0-9_\-]/g, '_')}` : 'schulportal_export';
+    const downloadFilename = `${safePrefix}_halbjahr_${halb}_${exportId}.zip`;
     sendSSE({
       type: 'complete',
       downloadUrl: `api/download-zip?file=${path.basename(zipPath)}&name=${encodeURIComponent(downloadFilename)}`
