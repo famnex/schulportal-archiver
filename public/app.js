@@ -18,6 +18,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const teachersAccordion = document.getElementById('teachers-accordion');
   const totalCoursesBadge = document.getElementById('total-courses-badge');
   const exportAllBtn = document.getElementById('export-all-btn');
+  const exportSelectedBtn = document.getElementById('export-selected-btn');
+  const exportSelectedText = document.getElementById('export-selected-text');
+  const selectAllBtn = document.getElementById('select-all-btn');
   const progressOverlay = document.getElementById('progress-overlay');
   const progressModalTitle = document.getElementById('progress-modal-title');
   const progressStatus = document.getElementById('progress-status');
@@ -126,6 +129,67 @@ document.addEventListener('DOMContentLoaded', () => {
   exportAllBtn.addEventListener('click', () => {
     triggerBulkExport();
   });
+
+  if (exportSelectedBtn) {
+    exportSelectedBtn.addEventListener('click', () => {
+      const checkedCbs = Array.from(teachersAccordion.querySelectorAll('.course-checkbox:checked'));
+      if (checkedCbs.length === 0) {
+        alert('Bitte mindestens eine Mappe auswählen.');
+        return;
+      }
+      const courseIds = checkedCbs.map(cb => cb.dataset.id);
+      triggerBulkExport({
+        courseIds,
+        teacher: 'Auswahl'
+      });
+    });
+  }
+
+  function updateSelectionState() {
+    const allCourseCheckboxes = teachersAccordion.querySelectorAll('.course-checkbox');
+    const checkedCourseCheckboxes = teachersAccordion.querySelectorAll('.course-checkbox:checked');
+    const count = checkedCourseCheckboxes.length;
+    const total = allCourseCheckboxes.length;
+
+    if (exportSelectedBtn && exportSelectedText) {
+      if (count > 0) {
+        exportSelectedBtn.disabled = false;
+        exportSelectedBtn.classList.remove('hidden');
+        exportSelectedText.textContent = `Auswahl exportieren (${count})`;
+      } else {
+        exportSelectedBtn.disabled = true;
+        exportSelectedBtn.classList.add('hidden');
+        exportSelectedText.textContent = 'Auswahl exportieren (0)';
+      }
+    }
+
+    if (selectAllBtn) {
+      if (count === total && total > 0) {
+        selectAllBtn.textContent = 'Keine auswählen';
+      } else {
+        selectAllBtn.textContent = 'Alle auswählen';
+      }
+    }
+
+    const teacherCards = teachersAccordion.querySelectorAll('.teacher-group-card');
+    teacherCards.forEach(card => {
+      const cardCourseCbs = card.querySelectorAll('.course-checkbox');
+      const cardCheckedCbs = card.querySelectorAll('.course-checkbox:checked');
+      const teacherCb = card.querySelector('.teacher-checkbox');
+      if (teacherCb) {
+        if (cardCourseCbs.length > 0 && cardCheckedCbs.length === cardCourseCbs.length) {
+          teacherCb.checked = true;
+          teacherCb.indeterminate = false;
+        } else if (cardCheckedCbs.length > 0) {
+          teacherCb.checked = false;
+          teacherCb.indeterminate = true;
+        } else {
+          teacherCb.checked = false;
+          teacherCb.indeterminate = false;
+        }
+      }
+    });
+  }
 
   cancelExportBtn.addEventListener('click', () => {
     cleanupExport();
@@ -236,6 +300,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     coursesContainer.classList.add('hidden');
     if (teachersAccordion) teachersAccordion.innerHTML = '';
+    updateSelectionState();
     
     hideStatus();
   });
@@ -316,6 +381,19 @@ document.addEventListener('DOMContentLoaded', () => {
         };
       }
 
+      // Select All button
+      if (selectAllBtn) {
+        selectAllBtn.textContent = 'Alle auswählen';
+        selectAllBtn.onclick = () => {
+          const allCbs = teachersAccordion.querySelectorAll('.course-checkbox');
+          const anyUnchecked = Array.from(allCbs).some(cb => !cb.checked);
+          allCbs.forEach(cb => {
+            cb.checked = anyUnchecked;
+          });
+          updateSelectionState();
+        };
+      }
+
       sortedTeachers.forEach((teacherName) => {
         const teacherCourses = teacherMap.get(teacherName);
         teacherCourses.sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }));
@@ -338,6 +416,19 @@ document.addEventListener('DOMContentLoaded', () => {
           </svg>
         `;
 
+        const teacherCheckbox = document.createElement('input');
+        teacherCheckbox.type = 'checkbox';
+        teacherCheckbox.className = 'custom-checkbox teacher-checkbox';
+        teacherCheckbox.title = `Alle Mappen von ${teacherName} auswählen`;
+        teacherCheckbox.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const isChecked = e.target.checked;
+          card.querySelectorAll('.course-checkbox').forEach(cb => {
+            cb.checked = isChecked;
+          });
+          updateSelectionState();
+        });
+
         const nameSpan = document.createElement('span');
         nameSpan.className = 'teacher-name';
         nameSpan.textContent = teacherName;
@@ -347,6 +438,7 @@ document.addEventListener('DOMContentLoaded', () => {
         countBadge.textContent = `(${teacherCourses.length})`;
 
         infoDiv.appendChild(chevron);
+        infoDiv.appendChild(teacherCheckbox);
         infoDiv.appendChild(nameSpan);
         infoDiv.appendChild(countBadge);
 
@@ -394,6 +486,7 @@ document.addEventListener('DOMContentLoaded', () => {
         table.innerHTML = `
           <thead>
             <tr>
+              <th style="width: 36px; text-align: center;"></th>
               <th style="width: 80px;">Kurs-ID</th>
               <th>Kursname</th>
               <th style="text-align: right; width: 80px;">Aktion</th>
@@ -405,6 +498,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         teacherCourses.forEach(c => {
           const tr = document.createElement('tr');
+
+          const tdCheck = document.createElement('td');
+          tdCheck.style.textAlign = 'center';
+          const courseCheckbox = document.createElement('input');
+          courseCheckbox.type = 'checkbox';
+          courseCheckbox.className = 'custom-checkbox course-checkbox';
+          courseCheckbox.dataset.id = c.id;
+          courseCheckbox.title = `Mappe "${c.name}" auswählen`;
+          courseCheckbox.addEventListener('click', (e) => {
+            e.stopPropagation();
+            updateSelectionState();
+          });
+          tdCheck.appendChild(courseCheckbox);
 
           const tdId = document.createElement('td');
           tdId.textContent = c.id;
@@ -432,6 +538,7 @@ document.addEventListener('DOMContentLoaded', () => {
           });
 
           tdAction.appendChild(downloadBtn);
+          tr.appendChild(tdCheck);
           tr.appendChild(tdId);
           tr.appendChild(tdName);
           tr.appendChild(tdAction);
@@ -446,10 +553,12 @@ document.addEventListener('DOMContentLoaded', () => {
         teachersAccordion.appendChild(card);
       });
 
+      updateSelectionState();
       coursesContainer.classList.remove('hidden');
     } else {
       totalCoursesBadge.textContent = 'Gesamt: 0 Mappen';
       teachersAccordion.innerHTML = '<p style="text-align:center; padding: 20px; color: var(--text-muted);">Keine Kurse gefunden.</p>';
+      updateSelectionState();
       coursesContainer.classList.remove('hidden');
     }
 

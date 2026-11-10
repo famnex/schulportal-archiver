@@ -98,6 +98,7 @@
             <h3 class="section-title">Meine Kurse</h3>
             <span class="total-courses-badge" id="total-courses-badge">Gesamt: 0 Mappen</span>
             <button type="button" class="toggle-all-btn" id="toggle-all-btn">Alle aufklappen</button>
+            <button type="button" class="select-all-btn" id="select-all-btn">Alle auswählen</button>
           </div>
           
           <div class="courses-header-right">
@@ -108,6 +109,15 @@
                 <option value="2">2. Halbjahr</option>
               </select>
             </div>
+
+            <button class="export-selected-btn hidden" id="export-selected-btn" disabled>
+              <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span id="export-selected-text">Auswahl exportieren (0)</span>
+            </button>
 
             <button class="export-all-btn" id="export-all-btn">
               <svg class="export-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

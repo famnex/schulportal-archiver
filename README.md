@@ -10,7 +10,8 @@ The project consists of:
    - **Login Memory**: Remembers the last used `Schulnummer` and `Username` in `localStorage` for quick re-login.
    - **Teacher Accordion**: Courses/books (`Mappen`) are grouped by teacher, sorted alphabetically by last name (`Nachname`), with count badges per teacher and a global count badge (`Gesamt: X Mappen`).
    - **Collapsible Cards**: Each teacher group can be expanded/collapsed.
-   - **Export Options**: Individual PDF export per course book, bulk ZIP export per teacher, or complete bulk ZIP export of all courses.
+   - **Selective Checkbox Export**: Checkboxes per teacher (selects all courses of that teacher) and per individual course book, with dynamic `Auswahl exportieren (X)` button and `Alle auswählen` toggle.
+   - **Export Options**: Individual PDF export per course book, custom checkbox selection ZIP export, bulk ZIP export per teacher, or complete bulk ZIP export of all courses.
    - **Live Progress**: Throttled parallel export with Server-Sent Events (SSE) and animated progress bar.
 2. **Backend (Express)**:
    - Serves the web interface and API endpoints with dynamic subpath support (`APP_URL`).
