@@ -122,14 +122,13 @@ function processSphUsername(username, schoolNumber) {
 /**
  * Normalizes a teacher name to "Nachname, Vorname" format
  */
-function normalizeTeacherName(raw) {
-  if (!raw) return 'Ohne Zuordnung';
+function cleanTeacherString(raw) {
+  if (!raw) return '';
   let clean = raw.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
   clean = clean.replace(/^(?:Herr|Frau|Dr\.|Prof\.)\s+/i, '');
-  if (['Eigene Mappen', 'Ohne Zuordnung', 'Unbekannt', 'Keine Lehrkraft'].includes(clean)) {
-    return clean;
+  if (!clean || ['Eigene Mappen', 'Ohne Zuordnung', 'Unbekannt', 'Keine Lehrkraft'].includes(clean)) {
+    return '';
   }
-  // If name already contains a comma (e.g. "Grasser, Andreas (GRAS)" or "Peter, Celina (pece)"), keep as is
   if (clean.includes(',')) {
     return clean;
   }
@@ -140,6 +139,11 @@ function normalizeTeacherName(raw) {
     clean = `${lastName}, ${firstName}`;
   }
   return clean;
+}
+
+function normalizeTeacherName(raw) {
+  const cleaned = cleanTeacherString(raw);
+  return cleaned || 'Ohne Zuordnung';
 }
 
 /**
@@ -165,10 +169,11 @@ function extractCourses(html, defaultTeacher = 'Eigene Mappen') {
 
     const teacherParts = rawTeacher
       .split(/<br\s*\/?>|\n/i)
-      .map(t => normalizeTeacherName(t))
-      .filter(t => t.length > 0 && !t.match(/^(?:Lehrer|Lehrkraft|Name)$/i));
+      .map(t => cleanTeacherString(t))
+      .filter(t => t.length > 0 && !t.match(/^(?:Lehrer|Lehrkraft|Name|Kursmappe)$/i));
 
-    let teacher = teacherParts.join(' / ');
+    const uniqueTeachers = [...new Set(teacherParts)];
+    let teacher = uniqueTeachers.join(' / ');
     if (!teacher) teacher = defaultTeacher;
 
     courses.push({

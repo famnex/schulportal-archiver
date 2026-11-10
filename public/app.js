@@ -298,12 +298,30 @@ document.addEventListener('DOMContentLoaded', () => {
         return getLastName(a).localeCompare(getLastName(b), 'de', { sensitivity: 'base' });
       });
 
+      // Toggle All button
+      const toggleAllBtn = document.getElementById('toggle-all-btn');
+      if (toggleAllBtn) {
+        toggleAllBtn.textContent = 'Alle aufklappen';
+        toggleAllBtn.onclick = () => {
+          const cards = teachersAccordion.querySelectorAll('.teacher-group-card');
+          const anyCollapsed = Array.from(cards).some(c => !c.classList.contains('expanded'));
+          cards.forEach(c => {
+            if (anyCollapsed) {
+              c.classList.add('expanded');
+            } else {
+              c.classList.remove('expanded');
+            }
+          });
+          toggleAllBtn.textContent = anyCollapsed ? 'Alle zuklappen' : 'Alle aufklappen';
+        };
+      }
+
       sortedTeachers.forEach((teacherName) => {
         const teacherCourses = teacherMap.get(teacherName);
         teacherCourses.sort((a, b) => a.name.localeCompare(b.name, 'de', { sensitivity: 'base' }));
 
         const card = document.createElement('div');
-        card.className = 'teacher-group-card expanded';
+        card.className = sortedTeachers.length === 1 ? 'teacher-group-card expanded' : 'teacher-group-card';
 
         // Header
         const header = document.createElement('div');
