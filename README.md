@@ -16,16 +16,26 @@ The project consists of:
 
 ## How to Run
 
-1. Make sure Node.js is installed.
+1. Make sure Node.js and a Chromium/Chrome browser are installed:
+   - **Linux (Debian/Ubuntu)**:
+     ```bash
+     sudo apt update ; sudo apt install -y chromium-browser # oder chromium
+     ```
+   - **Windows / macOS**: Standard Google Chrome or Microsoft Edge.
 2. Install dependencies:
    ```bash
    npm install
    ```
-3. Run the development server:
-   ```bash
-   npm start
-   ```
-4. Access the application at `http://localhost:3000`.
+3. Run the application:
+   - **Development**:
+     ```bash
+     npm start
+     ```
+   - **Production (PM2 with Subpath)**:
+     ```bash
+     PORT=3012 APP_URL="/it/schulportal-archiver/" pm2 start server.js --name "schulportal-archiver"
+     ```
+4. Access the application at your configured port/URL.
 
 ## Directory Structure
 
